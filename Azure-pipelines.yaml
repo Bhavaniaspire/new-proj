@@ -1,36 +1,64 @@
-
-# Docker
-# Build a Docker image
-# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
-
 trigger:
-- dev
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
 
 variables:
-  
-  acrLoginServer: bhavani3.azurecr.io
-  imageName: bhavani3.azurecr.io/repo1:57 
-  dockerfilePath: '**/Dockerfile'
-  tag: '$(Build.BuildId)'
+  GCP_PROJECT_ID: 'gcp-project-id'
+  GCP_BUCKET_NAME: 'gcp-bucket-name'
+  GCP_REGION: 'gcp-region'
+  GCP_SERVICE_ACCOUNT_KEY: 'gcp-key-file.json'
+  NODE_VERSION: '18.x'
 
-stages:
-- stage: Build
-  displayName: my-springboot-app
-  jobs:
-  - job: Build
-    displayName: Build
-    pool:
-      vmImage: ubuntu-latest
-    steps:
-    - task: Maven@4
-      inputs:
-        mavenPomFile: 'pom.xml'
-        goals: 'install'
-        publishJUnitResults: true
-        testResultsFiles: '**/surefire-reports/TEST-*.xml'
-        javaHomeOption: 'JDKVersion'
-        mavenVersionOption: 'Default'
-        mavenAuthenticateFeed: false
-        effectivePomSkip: false
-        sonarQubeRunAnalysis: false
-    
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSource: 'spec'
+      versionSpec: '18.x'
+    displayName: 'Install Node.js' 
+  - task: DownloadSecureFile@1
+    name: gcpKeyFile
+    inputs:
+      secureFile: $(GCP_SERVICE_ACCOUNT_KEY)
+
+  - script: |
+      echo "Installing Google Cloud SDK"
+      curl https://sdk.cloud.google.com | bash > /dev/null
+      source $HOME/.bashrc
+      echo "Authenticating with GCP"
+      gcloud auth activate-service-account --key-file=$(gcpKeyFile.secureFilePath)
+      gcloud config set project $(GCP_PROJECT_ID)
+    displayName: 'Install and Authenticate GCP SDK'
+
+  - script: |
+      echo "Installing dependencies"
+      npm install
+    displayName: 'Install Dependencies'
+
+  - script: |
+      echo "Running tests"
+      npm test
+    displayName: 'Run Tests'
+
+  - script: |
+      echo "Building the application"
+      npm run build
+    displayName: 'Build Application'
+
+  - script: |
+      echo "Preparing deployment to GCP Bucket"
+      ARTIFACTS_DIR=$(Build.ArtifactStagingDirectory)/publish
+      mkdir -p $ARTIFACTS_DIR
+      cp -r build-output-path/* $ARTIFACTS_DIR/
+    displayName: 'Prepare Artifacts'
+
+  - script: |
+      echo "Deploying to GCP Bucket"
+      gsutil -m cp -r $(Build.ArtifactStagingDirectory)/publish/* gs://$(GCP_BUCKET_NAME)/
+    displayName: 'Deploy to GCP Bucket'
+
+  - script: |
+      echo "Cleaning up"
+      rm -rf $(Build.ArtifactStagingDirectory)/publish
+    displayName: 'Cleanup'
