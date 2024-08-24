@@ -4,10 +4,7 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/docker
 
 trigger:
-- main
-
-resources:
-- repo: self
+- dev
 
 variables:
   
@@ -36,48 +33,4 @@ stages:
         mavenAuthenticateFeed: false
         effectivePomSkip: false
         sonarQubeRunAnalysis: false
-    - task: CopyFiles@2
-      inputs:
-        SourceFolder: '$(build.sourcesdirectory)'
-        Contents: |
-          **/aks-deploy-from-acr.yaml
-          **/*.dacpac
-        TargetFolder: '$(build.artifactstagingdirectory)'
-    - task: Docker@2
-      displayName: Build and push an image to container registry
-      inputs:
-        command: buildAndPush
-        repository: $(acrLoginServer)/$(imageName)
-        Dockerfile: $(dockerfilePath)
-        containerRegistry: $(dockerRegistryServiceConnection)
-        tags: |
-          $(tag)
-- stage: Deploy
-  displayName: AKS Stage
-  dependsOn: Build
-  condition: succeeded('Build')
-  jobs:
-    - deployment: AKS
-      displayName: 'AKS Deployment'
-      environment: 'dev'
-      pool:
-        vmImage: 'ubuntu-latest'
-      strategy:
-       runOnce:
-         deploy:
-          steps:
-          - task: Kubernetes@1
-            inputs:
-              connectionType: 'Azure Resource Manager'
-              azureSubscriptionEndpoint: 'Pay-As-You-Go(xxxxxxxxxxxxxxxxxxxxxxxxxxx)'
-              azureResourceGroup: 'xxxxxxxxxxxx'
-              kubernetesCluster: 'xxxxxxxxx'
-              command: 'apply'
-              useConfigurationFile: true
-              configuration: '$(pipeline.workspace)/drop/aks-deploy-from-acr.yaml'
-              secretType: 'dockerRegistry'
-              containerRegistryType: 'Azure Container Registry'
-              azureSubscriptionEndpointForSecrets: 'Pay-As-You-Go(xxxxxxxxxxxxxxxxxxxxxxxxxxx)'
-              azureContainerRegistry: 'xxxxxxxx.azurecr.io'
-              secretName: 'acrsecret'
-             
+    
